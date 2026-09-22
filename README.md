@@ -1,3 +1,4 @@
+# UPDATE 22/09/2026: aggiunta GUI Windows (compare-video-quality-gui.ps1) per lo script di confronto qualita' video
 # UPDATE 22/09/2026: aggiunta versione Windows (compare-video-quality.ps1) dello script di confronto qualita' video
 # UPDATE 22/09/2026: aggiunto script compare-video-quality.sh (confronto qualita' video tra due cartelle)
 # UPDATE 16/11/2021: aggiunto script modem poste italiane (H2640 PMZHP_1.0.1_001)
@@ -44,13 +45,21 @@ Disponibile in due versioni equivalenti, stesso comportamento e stesso formato d
 * Uso: `./compare-video-quality.sh <dir_A> <dir_B> [output_dir] [num_campioni]`
 * Esempio: `./compare-video-quality.sh ~/Download/serie_v1 ~/Download/serie_v2 ./report 7`
 
-**Windows - `compare-video-quality.ps1`**
+**Windows - `compare-video-quality.ps1` (riga di comando) e `compare-video-quality-gui.ps1` (GUI)**
 * Software necessari: ffmpeg e ffprobe nel PATH di Windows (build "essentials" da https://www.gyan.dev/ffmpeg/builds/, poi aggiungi la cartella `bin` al PATH)
-* Uso: `.\compare-video-quality.ps1 <dir_A> <dir_B> [output_dir] [num_campioni]`
+* Scarica insieme, nella stessa cartella, tutti e 3 i file: `compare-video-quality.ps1`, `compare-video-quality-gui.ps1` e `VideoQualityCompareCore.psm1` (la logica di confronto e' condivisa tra i due, il file `.psm1` serve a entrambi)
+* Uso da riga di comando: `.\compare-video-quality.ps1 <dir_A> <dir_B> [output_dir] [num_campioni]`
 * Esempio: `.\compare-video-quality.ps1 "D:\Download\serie_v1" "D:\Download\serie_v2" .\report 7`
 * Se Windows blocca l'esecuzione dello script (execution policy), avvialo con:
   `powershell -ExecutionPolicy Bypass -File .\compare-video-quality.ps1 <dir_A> <dir_B>`
 * Genera `move-losers.ps1` (equivalente Windows di `move-losers.sh`, con comandi `Move-Item` commentati)
+
+**GUI - `compare-video-quality-gui.ps1`**
+* Interfaccia grafica (Windows Forms) per chi preferisce non usare la riga di comando
+* Avvio: doppio click, oppure `powershell -ExecutionPolicy Bypass -File .\compare-video-quality-gui.ps1`
+* Campi: cartella A, cartella B, cartella di output (con pulsanti "Sfoglia..."), numero di campioni
+* Pulsanti: "Avvia confronto" (con barra di avanzamento e log in tempo reale), "Annulla" (interrompe ma salva comunque il report parziale gia' elaborato), "Apri cartella report" (apre Esplora File sul risultato)
+* Non serve avviarla come amministratore; se lanciata con PowerShell 7 (`pwsh.exe`) si riavvia automaticamente in modalita' STA (necessaria per le finestre di dialogo), e' normale vedere apparire una seconda finestra della console per un istante
 
 #esempi
 
