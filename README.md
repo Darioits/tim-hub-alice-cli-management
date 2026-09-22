@@ -1,3 +1,4 @@
+# UPDATE 22/09/2026: aggiunta versione Windows (compare-video-quality.ps1) dello script di confronto qualita' video
 # UPDATE 22/09/2026: aggiunto script compare-video-quality.sh (confronto qualita' video tra due cartelle)
 # UPDATE 16/11/2021: aggiunto script modem poste italiane (H2640 PMZHP_1.0.1_001)
 # UPDATE 06/10/2021: aggiunto script tim hub+ (H388X AGZHP_1.2.0)
@@ -28,11 +29,20 @@ report.csv) con un punteggio orientativo, e uno script `move-losers.sh` con coma
 `mv` gia' commentati per mettere in quarantena le copie perdenti (nulla viene
 cancellato o spostato automaticamente, decidi tu dopo aver controllato gli screenshot).
 
-Software necessari: ffmpeg, ffprobe, jq
+Disponibile in due versioni equivalenti, stesso comportamento e stesso formato di report:
 
-Uso: ./compare-video-quality.sh <dir_A> <dir_B> [output_dir] [num_campioni]
+**Linux/macOS - `compare-video-quality.sh`**
+* Software necessari: ffmpeg, ffprobe, jq
+* Uso: `./compare-video-quality.sh <dir_A> <dir_B> [output_dir] [num_campioni]`
+* Esempio: `./compare-video-quality.sh ~/Download/serie_v1 ~/Download/serie_v2 ./report 7`
 
-Esempio: ./compare-video-quality.sh ~/Download/serie_v1 ~/Download/serie_v2 ./report 7
+**Windows - `compare-video-quality.ps1`**
+* Software necessari: ffmpeg e ffprobe nel PATH di Windows (build "essentials" da https://www.gyan.dev/ffmpeg/builds/, poi aggiungi la cartella `bin` al PATH)
+* Uso: `.\compare-video-quality.ps1 <dir_A> <dir_B> [output_dir] [num_campioni]`
+* Esempio: `.\compare-video-quality.ps1 "D:\Download\serie_v1" "D:\Download\serie_v2" .\report 7`
+* Se Windows blocca l'esecuzione dello script (execution policy), avvialo con:
+  `powershell -ExecutionPolicy Bypass -File .\compare-video-quality.ps1 <dir_A> <dir_B>`
+* Genera `move-losers.ps1` (equivalente Windows di `move-losers.sh`, con comandi `Move-Item` commentati)
 
 #esempi
 
