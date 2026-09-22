@@ -1,3 +1,4 @@
+# UPDATE 22/09/2026: aggiunto script compare-video-quality.sh (confronto qualita' video tra due cartelle)
 # UPDATE 16/11/2021: aggiunto script modem poste italiane (H2640 PMZHP_1.0.1_001)
 # UPDATE 06/10/2021: aggiunto script tim hub+ (H388X AGZHP_1.2.0)
 
@@ -13,6 +14,25 @@ Non so come si comporta con modem senza password impostata, fate sapere :)
 * Testato su: AGVTF_5.3.3 - modem alice adsl/vdsl (modemalice.sh)
 * Testato su: TIM HUB+ - H388X AGZHP_1.2.0 - modem tim hub+ fibra/vdsl2 (modemtimhub.sh)
 * Testato su: H2640 PMZHP_1.0.1_001 - modem poste italiane adsl/vdsl (h2640.sh)
+
+# compare-video-quality.sh
+
+Confronta la qualita' dei video con lo stesso nome presenti in due cartelle diverse
+(es. stesso film/episodio scaricato in momenti differenti) e aiuta a decidere quale
+copia tenere, indipendentemente dalla dimensione del file.
+
+Per ogni coppia analizza risoluzione, bitrate e codec (ffprobe), misura la nitidezza
+reale su alcuni fotogrammi campione con il filtro ffmpeg `blurdetect` e genera
+screenshot affiancati A/B per la verifica visiva. Produce un report (report.md,
+report.csv) con un punteggio orientativo, e uno script `move-losers.sh` con comandi
+`mv` gia' commentati per mettere in quarantena le copie perdenti (nulla viene
+cancellato o spostato automaticamente, decidi tu dopo aver controllato gli screenshot).
+
+Software necessari: ffmpeg, ffprobe, jq
+
+Uso: ./compare-video-quality.sh <dir_A> <dir_B> [output_dir] [num_campioni]
+
+Esempio: ./compare-video-quality.sh ~/Download/serie_v1 ~/Download/serie_v2 ./report 7
 
 #esempi
 
