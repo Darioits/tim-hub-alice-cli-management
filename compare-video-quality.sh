@@ -2,9 +2,18 @@
 #
 # compare-video-quality.sh
 #
-# Confronta la qualita' dei video con lo STESSO NOME presenti in due
-# directory diverse (es. stesso film/episodio scaricato in momenti
-# differenti) e aiuta a decidere quale copia tenere.
+# Confronta la qualita' dei video con lo stesso nome (o release diverse
+# dello stesso titolo) presenti in due directory diverse, comprese le
+# sottocartelle (es. stesso film/episodio scaricato in momenti differenti,
+# magari con tag di release diversi) e aiuta a decidere quale copia tenere.
+#
+# La ricerca dei file e' RICORSIVA in entrambe le cartelle, e l'abbinamento
+# avviene sul nome normalizzato (minuscolo, senza tag tecnici comuni come
+# risoluzione/source/codec/audio/lingua/release group): "Il Film (2020).mkv"
+# e "Il.Film.2020.1080p.BluRay.x264-GROUP.mp4" vengono riconosciuti come lo
+# stesso video. E' un confronto volutamente prudente (solo match esatto dopo
+# la normalizzazione, niente somiglianza approssimata) per ridurre il rischio
+# di abbinare per errore due video diversi.
 #
 # Per ogni coppia di file corrispondenti:
 #  - legge risoluzione, bitrate e codec con ffprobe
@@ -116,6 +125,35 @@ calc() { awk "BEGIN{ printf \"%.6f\", ($1) }"; }
 # valuta una condizione booleana con awk, restituisce "1" o "0" (mai "1.000000")
 cond() { awk "BEGIN{ print (($1) ? 1 : 0) }"; }
 
+# normalizza un nome file (senza estensione) per riconoscere release diverse
+# dello stesso video: minuscolo, separatori uniformati, tag tecnici comuni
+# (risoluzione/source/codec/audio/lingua/release group) rimossi.
+# es: "Il.Film.2020.1080p.BluRay.x264-GROUP" e "Il Film (2020)" -> "il film 2020"
+normalize_name() {
+	local s year
+	# preserva un eventuale anno (19xx/20xx) anche se e' tra parentesi/graffe,
+	# cosi' "Titolo [2019]" e "Titolo 2019" restano riconosciuti come uguali
+	year="$(printf '%s' "$1" | grep -Eo '(19[0-9]{2}|20[0-9]{2})' | head -1)"
+	s="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+	s="$(printf '%s' "$s" | sed -E 's/[._]+/ /g')"
+	s="$(printf '%s' "$s" | sed -E 's/\[[^]]*\]//g; s/\{[^}]*\}//g')"
+	s="$(printf '%s' "$s" | sed -E '
+		s/\b(2160p|1080p|720p|480p|360p|4k|uhd|hdr|hd|sd)\b//g;
+		s/\b(bluray|blu-ray|bdrip|brrip|bdremux|remux|web-?dl|webrip|hdtv|dvdrip|dvdscr|dvd|dsnp|amzn|nf|hmax|atvp)\b//g;
+		s/\b(x264|x265|h264|h265|hevc|avc|xvid|divx|10bit|8bit)\b//g;
+		s/\b(aac|ac3|dts|dd5 1|dd\+|eac3|flac|mp3|5 1|7 1|2 0)\b//g;
+		s/\b(ita|eng|engita|itaeng|multi|sub|subs|subbed|dual|dl)\b//g;
+		s/\b(repack|proper|extended|uncut|remastered|complete|internal|limited)\b//g
+	')"
+	s="$(printf '%s' "$s" | sed -E 's/-[a-z0-9]+$//')"
+	s="$(printf '%s' "$s" | sed -E "s/['\"(),!:;]//g")"
+	if [ -n "$year" ] && [[ "$s" != *"$year"* ]]; then
+		s="$s $year"
+	fi
+	s="$(printf '%s' "$s" | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
+	printf '%s' "$s"
+}
+
 # secondi -> mm:ss
 fmt_time() { awk -v s="$1" 'BEGIN{ printf "%02d:%02d", int(s/60), int(s)%60 }'; }
 
@@ -194,15 +232,23 @@ chmod +x "$MOVE_SCRIPT"
 declare -A PATH_A PATH_B
 while IFS= read -r -d '' f; do
 	bn="$(basename "$f")"; name="${bn%.*}"
-	key="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+	key="$(normalize_name "$name")"
+	[ -z "$key" ] && continue
+	if [ -n "${PATH_A[$key]+x}" ] && [ "${PATH_A[$key]}" != "$f" ]; then
+		echo "Attenzione: in '$DIR_A' '$f' si normalizza come '${PATH_A[$key]}' (stesso nome dopo la pulizia dei tag). Tengo solo il secondo trovato."
+	fi
 	PATH_A["$key"]="$f"
-done < <(find "$DIR_A" -maxdepth 1 -type f -print0)
+done < <(find "$DIR_A" -type f -print0)
 
 while IFS= read -r -d '' f; do
 	bn="$(basename "$f")"; name="${bn%.*}"
-	key="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+	key="$(normalize_name "$name")"
+	[ -z "$key" ] && continue
+	if [ -n "${PATH_B[$key]+x}" ] && [ "${PATH_B[$key]}" != "$f" ]; then
+		echo "Attenzione: in '$DIR_B' '$f' si normalizza come '${PATH_B[$key]}' (stesso nome dopo la pulizia dei tag). Tengo solo il secondo trovato."
+	fi
 	PATH_B["$key"]="$f"
-done < <(find "$DIR_B" -maxdepth 1 -type f -print0)
+done < <(find "$DIR_B" -type f -print0)
 
 mapfile -t COMMON_KEYS < <(for k in "${!PATH_A[@]}"; do [ -n "${PATH_B[$k]+x}" ] && echo "$k"; done | sort)
 
@@ -220,7 +266,7 @@ pair_num=0
 for key in "${COMMON_KEYS[@]}"; do
 	pair_num=$((pair_num + 1))
 	fA="${PATH_A[$key]}"; fB="${PATH_B[$key]}"
-	pair_label="$(basename "$fA")"
+	pair_label="$(basename "$fA") <-> $(basename "$fB")"
 	echo "[$pair_num/${#COMMON_KEYS[@]}] $pair_label"
 
 	jsonA="$(probe_json "$fA")"; jsonB="$(probe_json "$fB")"

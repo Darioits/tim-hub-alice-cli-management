@@ -18,9 +18,17 @@ Non so come si comporta con modem senza password impostata, fate sapere :)
 
 # compare-video-quality.sh
 
-Confronta la qualita' dei video con lo stesso nome presenti in due cartelle diverse
-(es. stesso film/episodio scaricato in momenti differenti) e aiuta a decidere quale
-copia tenere, indipendentemente dalla dimensione del file.
+Confronta la qualita' dei video con lo stesso nome (o release diverse dello stesso
+titolo) presenti in due cartelle diverse, cercando anche nelle sottocartelle (es.
+stesso film/episodio scaricato in momenti differenti, magari con nomi di release
+diversi tipo "Il Film (2020).mkv" vs "Il.Film.2020.1080p.BluRay.x264-GROUP.mp4") e
+aiuta a decidere quale copia tenere, indipendentemente dalla dimensione del file.
+
+La ricerca e' ricorsiva e l'abbinamento avviene sul nome "ripulito" dei tag tecnici
+comuni (risoluzione, source, codec, audio, lingua, release group, anno tra parentesi):
+solo un match esatto dopo la normalizzazione, per ridurre al minimo il rischio di
+abbinare per errore due video diversi. Se due file nella stessa cartella si
+normalizzano allo stesso nome, lo script lo segnala a schermo.
 
 Per ogni coppia analizza risoluzione, bitrate e codec (ffprobe), misura la nitidezza
 reale su alcuni fotogrammi campione con il filtro ffmpeg `blurdetect` e genera

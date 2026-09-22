@@ -1,10 +1,18 @@
 <#
 .SYNOPSIS
-    Confronta la qualita' dei video con lo STESSO NOME presenti in due
-    cartelle diverse (es. stesso film/episodio scaricato in momenti
-    differenti) e aiuta a decidere quale copia tenere.
+    Confronta la qualita' dei video con lo stesso nome (o release diverse
+    dello stesso titolo) presenti in due cartelle diverse, comprese le
+    sottocartelle, e aiuta a decidere quale copia tenere.
 
 .DESCRIPTION
+    La ricerca dei file e' RICORSIVA in entrambe le cartelle, e l'abbinamento
+    avviene sul nome normalizzato (minuscolo, senza tag tecnici comuni come
+    risoluzione/source/codec/audio/lingua/release group): "Il Film (2020).mkv"
+    e "Il.Film.2020.1080p.BluRay.x264-GROUP.mp4" vengono riconosciuti come lo
+    stesso video. E' un confronto volutamente prudente (solo match esatto dopo
+    la normalizzazione, niente somiglianza approssimata) per ridurre il rischio
+    di abbinare per errore due video diversi.
+
     Per ogni coppia di file corrispondenti:
       - legge risoluzione, bitrate e codec con ffprobe
       - estrae N fotogrammi campione (agli stessi istanti relativi) e ne
@@ -200,6 +208,39 @@ function ConvertTo-FfmpegFontPath {
     return $p
 }
 
+# normalizza un nome file (senza estensione) per riconoscere release diverse
+# dello stesso video: minuscolo, separatori uniformati, tag tecnici comuni
+# (risoluzione/source/codec/audio/lingua/release group) rimossi.
+# es: "Il.Film.2020.1080p.BluRay.x264-GROUP" e "Il Film (2020)" -> "il film 2020"
+$TechTagPattern = '\b(2160p|1080p|720p|480p|360p|4k|uhd|hdr|hd|sd|' +
+    'bluray|blu-ray|bdrip|brrip|bdremux|remux|web-?dl|webrip|hdtv|dvdrip|dvdscr|dvd|dsnp|amzn|nf|hmax|atvp|' +
+    'x264|x265|h264|h265|hevc|avc|xvid|divx|10bit|8bit|' +
+    'aac|ac3|dts|dd5 1|dd\+|eac3|flac|mp3|5 1|7 1|2 0|' +
+    'ita|eng|engita|itaeng|multi|sub|subs|subbed|dual|dl|' +
+    'repack|proper|extended|uncut|remastered|complete|internal|limited)\b'
+
+function Get-NormalizedName {
+    param([string]$Name)
+    # preserva un eventuale anno (19xx/20xx) anche se e' tra parentesi/graffe,
+    # cosi' "Titolo [2019]" e "Titolo 2019" restano riconosciuti come uguali
+    $yearMatch = [Regex]::Match($Name, '(19[0-9]{2}|20[0-9]{2})')
+    $year = $null
+    if ($yearMatch.Success) { $year = $yearMatch.Value }
+
+    $s = $Name.ToLowerInvariant()
+    $s = $s -replace '[._]+', ' '
+    $s = $s -replace '\[[^\]]*\]', ''
+    $s = $s -replace '\{[^\}]*\}', ''
+    $s = $s -replace $TechTagPattern, ''
+    $s = $s -replace '-[a-z0-9]+$', ''
+    $s = $s -replace "['""(),!:;]", ''
+
+    if ($year -and ($s -notlike "*$year*")) { $s = "$s $year" }
+
+    $s = ($s -replace '\s+', ' ').Trim()
+    return $s
+}
+
 # estrae in un'unica passata ffmpeg: nitidezza (blurdetect, risoluzione nativa)
 # + miniatura in tela fissa ShotW x ShotH (per il confronto affiancato)
 function Get-SampleFrame {
@@ -244,14 +285,22 @@ function Merge-SideBySide {
 ##---------------------------- MATCHING FILE ---------------------------------
 
 $filesA = @{}
-foreach ($f in Get-ChildItem -LiteralPath $fullA -File) {
-    $key = [IO.Path]::GetFileNameWithoutExtension($f.Name).ToLowerInvariant()
-    if (-not $filesA.ContainsKey($key)) { $filesA[$key] = $f.FullName }
+foreach ($f in Get-ChildItem -LiteralPath $fullA -File -Recurse) {
+    $key = Get-NormalizedName ([IO.Path]::GetFileNameWithoutExtension($f.Name))
+    if ([string]::IsNullOrWhiteSpace($key)) { continue }
+    if ($filesA.ContainsKey($key) -and $filesA[$key] -ne $f.FullName) {
+        Write-Host "Attenzione: in '$fullA' '$($f.FullName)' si normalizza come '$($filesA[$key])' (stesso nome dopo la pulizia dei tag). Tengo solo il secondo trovato."
+    }
+    $filesA[$key] = $f.FullName
 }
 $filesB = @{}
-foreach ($f in Get-ChildItem -LiteralPath $fullB -File) {
-    $key = [IO.Path]::GetFileNameWithoutExtension($f.Name).ToLowerInvariant()
-    if (-not $filesB.ContainsKey($key)) { $filesB[$key] = $f.FullName }
+foreach ($f in Get-ChildItem -LiteralPath $fullB -File -Recurse) {
+    $key = Get-NormalizedName ([IO.Path]::GetFileNameWithoutExtension($f.Name))
+    if ([string]::IsNullOrWhiteSpace($key)) { continue }
+    if ($filesB.ContainsKey($key) -and $filesB[$key] -ne $f.FullName) {
+        Write-Host "Attenzione: in '$fullB' '$($f.FullName)' si normalizza come '$($filesB[$key])' (stesso nome dopo la pulizia dei tag). Tengo solo il secondo trovato."
+    }
+    $filesB[$key] = $f.FullName
 }
 $commonKeys = $filesA.Keys | Where-Object { $filesB.ContainsKey($_) } | Sort-Object
 
@@ -295,7 +344,7 @@ foreach ($key in $commonKeys) {
     $pairNum++
     $fA = $filesA[$key]
     $fB = $filesB[$key]
-    $pairLabel = [IO.Path]::GetFileName($fA)
+    $pairLabel = "$([IO.Path]::GetFileName($fA)) <-> $([IO.Path]::GetFileName($fB))"
     Write-Host "[$pairNum/$($commonKeys.Count)] $pairLabel"
 
     $infoA = Get-ProbeInfo $fA
