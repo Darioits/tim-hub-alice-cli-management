@@ -76,6 +76,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "GUI smoke test fallito (PowerShell 7 / rilancio STA), exit code $LASTEXITCODE" }
           Get-Content report_gui_ps7\report.md
 
+      - name: GUI smoke test - PowerShell 7 forzato in MTA (verifica REALE del rilancio automatico in STA)
+        id: gui_ps7_mta
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # pwsh su questo runner parte gia' in STA di suo: il test precedente
+          # non esercita davvero il ramo di auto-rilancio dello script. Qui
+          # forziamo l'avvio in MTA con -MTA per far scattare per forza il
+          # rilancio automatico e verificare che funzioni davvero.
+          pwsh -MTA -NoProfile -Command "Write-Host 'ApartmentState del processo pwsh -MTA:' ([System.Threading.Thread]::CurrentThread.GetApartmentState())"
+          pwsh -MTA -NoProfile -File .\compare-video-quality-gui.ps1 -SmokeTest -SmokeTestDirA testA -SmokeTestDirB testB -SmokeTestOutDir report_gui_ps7_mta
+          if ($LASTEXITCODE -ne 0) { throw "GUI smoke test fallito (PowerShell 7 avviato in MTA, il rilancio automatico in STA non ha funzionato), exit code $LASTEXITCODE" }
+          Get-Content report_gui_ps7_mta\report.md
+
       - name: Upload report artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -86,6 +101,7 @@ jobs:
             report_ps7/**
             report_gui_ps51/**
             report_gui_ps7/**
+            report_gui_ps7_mta/**
 
       - name: Riepilogo esiti (fallisce il job se uno qualsiasi dei test e' fallito)
         if: always()
@@ -96,6 +112,7 @@ jobs:
             "CLI PowerShell 7"        = "${{ steps.cli_ps7.outcome }}"
             "GUI smoke PowerShell 5.1" = "${{ steps.gui_ps51.outcome }}"
             "GUI smoke PowerShell 7"   = "${{ steps.gui_ps7.outcome }}"
+            "GUI smoke PowerShell 7 (forzato MTA, verifica rilancio STA)" = "${{ steps.gui_ps7_mta.outcome }}"
           }
           $failed = $false
           foreach ($k in $results.Keys) {
