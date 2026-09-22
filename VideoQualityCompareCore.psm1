@@ -147,6 +147,11 @@ function Invoke-VideoQualityComparison {
 
         function Get-ProbeInfo {
             param([string]$Path)
+            # $ErrorActionPreference locale = "Continue": su Windows PowerShell 5.1
+            # l'output su stderr di un eseguibile nativo (anche se ridiretto con
+            # 2>$null) viene convertito in eccezione fatale quando e' "Stop",
+            # anche se ffprobe non e' affatto fallito.
+            $ErrorActionPreference = "Continue"
             $ffArgs = @(
                 '-v', 'error', '-select_streams', 'v:0',
                 '-show_entries', 'stream=width,height,codec_name,bit_rate,r_frame_rate',
@@ -213,6 +218,7 @@ function Invoke-VideoQualityComparison {
         # affiancato)
         function Get-SampleFrame {
             param([double]$Ts, [string]$Video, [string]$ThumbPath)
+            $ErrorActionPreference = "Continue"  # vedi nota in Get-ProbeInfo
             $log = Join-Path $WorkTmp "blur.log"
             $tsStr = Fmt $Ts "0.000000"
             $filter = "[0:v]split=2[v1][v2];[v1]blurdetect=block_width=32:block_height=32[vb];" +
@@ -235,6 +241,7 @@ function Invoke-VideoQualityComparison {
         # etichette A/B
         function Merge-SideBySide {
             param([string]$ImgA, [string]$ImgB, [string]$Out)
+            $ErrorActionPreference = "Continue"  # vedi nota in Get-ProbeInfo
             if ($LabelFont) {
                 $fontPath = ConvertTo-FfmpegFontPath $LabelFont
                 $vfA = "drawtext=fontfile='$fontPath':text='A':fontcolor=yellow:fontsize=20:x=8:y=8:box=1:boxcolor=black@0.5"

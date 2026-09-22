@@ -30,6 +30,8 @@ jobs:
           ffmpeg -y -hide_banner -loglevel error -f lavfi -i "testsrc2=size=1280x720:rate=25:duration=6" -vf "scale=640:360,boxblur=3:1,scale=1280:720" -c:v libx264 -crf 34 -pix_fmt yuv420p "testB/Film Bello (2020).mp4"
 
       - name: CLI - Windows PowerShell 5.1 (powershell.exe)
+        id: cli_ps51
+        continue-on-error: true
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -41,6 +43,8 @@ jobs:
           }
 
       - name: CLI - PowerShell 7 (pwsh.exe)
+        id: cli_ps7
+        continue-on-error: true
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -52,6 +56,8 @@ jobs:
           }
 
       - name: GUI smoke test - Windows PowerShell 5.1 (powershell.exe, gia' STA)
+        id: gui_ps51
+        continue-on-error: true
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -60,6 +66,8 @@ jobs:
           Get-Content report_gui_ps51\report.md
 
       - name: GUI smoke test - PowerShell 7 (pwsh.exe, verifica anche il rilancio automatico in STA)
+        id: gui_ps7
+        continue-on-error: true
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -78,3 +86,20 @@ jobs:
             report_ps7/**
             report_gui_ps51/**
             report_gui_ps7/**
+
+      - name: Riepilogo esiti (fallisce il job se uno qualsiasi dei test e' fallito)
+        if: always()
+        shell: pwsh
+        run: |
+          $results = @{
+            "CLI PowerShell 5.1"      = "${{ steps.cli_ps51.outcome }}"
+            "CLI PowerShell 7"        = "${{ steps.cli_ps7.outcome }}"
+            "GUI smoke PowerShell 5.1" = "${{ steps.gui_ps51.outcome }}"
+            "GUI smoke PowerShell 7"   = "${{ steps.gui_ps7.outcome }}"
+          }
+          $failed = $false
+          foreach ($k in $results.Keys) {
+            Write-Host "$k`: $($results[$k])"
+            if ($results[$k] -ne "success") { $failed = $true }
+          }
+          if ($failed) { throw "Uno o piu' test sono falliti (vedi sopra)." }
