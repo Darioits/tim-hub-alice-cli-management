@@ -1,0 +1,80 @@
+name: Test compare-video-quality (Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'compare-video-quality.ps1'
+      - 'compare-video-quality-gui.ps1'
+      - 'VideoQualityCompareCore.psm1'
+      - '.github/workflows/test-video-quality-windows.yml'
+
+jobs:
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Verify ffmpeg/ffprobe
+        run: |
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Generate synthetic test videos
+        run: |
+          New-Item -ItemType Directory -Force -Path testA, testB | Out-Null
+          ffmpeg -y -hide_banner -loglevel error -f lavfi -i "testsrc2=size=1280x720:rate=25:duration=6" -c:v libx264 -crf 16 -pix_fmt yuv420p "testA/Film Bello (2020).mkv"
+          ffmpeg -y -hide_banner -loglevel error -f lavfi -i "testsrc2=size=1280x720:rate=25:duration=6" -vf "scale=640:360,boxblur=3:1,scale=1280:720" -c:v libx264 -crf 34 -pix_fmt yuv420p "testB/Film Bello (2020).mp4"
+
+      - name: CLI - Windows PowerShell 5.1 (powershell.exe)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\compare-video-quality.ps1 testA testB report_ps51 3
+          Write-Host "----- report_ps51/report.md -----"
+          Get-Content report_ps51\report.md
+          if (-not (Select-String -Path report_ps51\report.md -Pattern "Consigliato: A" -Quiet)) {
+            throw "Verdetto atteso 'Consigliato: A' non trovato nel report (PowerShell 5.1)"
+          }
+
+      - name: CLI - PowerShell 7 (pwsh.exe)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\compare-video-quality.ps1 testA testB report_ps7 3
+          Write-Host "----- report_ps7/report.md -----"
+          Get-Content report_ps7\report.md
+          if (-not (Select-String -Path report_ps7\report.md -Pattern "Consigliato: A" -Quiet)) {
+            throw "Verdetto atteso 'Consigliato: A' non trovato nel report (PowerShell 7)"
+          }
+
+      - name: GUI smoke test - Windows PowerShell 5.1 (powershell.exe, gia' STA)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\compare-video-quality-gui.ps1 -SmokeTest -SmokeTestDirA testA -SmokeTestDirB testB -SmokeTestOutDir report_gui_ps51
+          if ($LASTEXITCODE -ne 0) { throw "GUI smoke test fallito (PowerShell 5.1), exit code $LASTEXITCODE" }
+          Get-Content report_gui_ps51\report.md
+
+      - name: GUI smoke test - PowerShell 7 (pwsh.exe, verifica anche il rilancio automatico in STA)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Write-Host "ApartmentState di questo processo pwsh prima dell'avvio dello script:" ([System.Threading.Thread]::CurrentThread.GetApartmentState())
+          .\compare-video-quality-gui.ps1 -SmokeTest -SmokeTestDirA testA -SmokeTestDirB testB -SmokeTestOutDir report_gui_ps7
+          if ($LASTEXITCODE -ne 0) { throw "GUI smoke test fallito (PowerShell 7 / rilancio STA), exit code $LASTEXITCODE" }
+          Get-Content report_gui_ps7\report.md
+
+      - name: Upload report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-reports
+          path: |
+            report_ps51/**
+            report_ps7/**
+            report_gui_ps51/**
+            report_gui_ps7/**

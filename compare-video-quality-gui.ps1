@@ -16,7 +16,16 @@
 #>
 
 [CmdletBinding()]
-param()
+param(
+    # Parametri usati solo per il test automatico non interattivo (CI): quando
+    # -SmokeTest e' presente, la GUI si autocompila i campi, simula il click
+    # su "Avvia confronto" e si chiude da sola invece di aspettare l'utente.
+    # Non servono per l'uso normale.
+    [switch]$SmokeTest,
+    [string]$SmokeTestDirA,
+    [string]$SmokeTestDirB,
+    [string]$SmokeTestOutDir
+)
 
 $onWindows = ($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows
 if (-not $onWindows) {
@@ -31,7 +40,11 @@ if (-not $onWindows) {
 if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne [System.Threading.ApartmentState]::STA) {
     $exeName = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh.exe' } else { 'powershell.exe' }
     $psExe = Join-Path $PSHOME $exeName
-    $proc = Start-Process -FilePath $psExe -ArgumentList @('-NoProfile', '-STA', '-File', "`"$PSCommandPath`"") -PassThru -Wait
+    $relaunchArgs = @('-NoProfile', '-STA', '-File', "`"$PSCommandPath`"")
+    if ($SmokeTest) {
+        $relaunchArgs += @('-SmokeTest', '-SmokeTestDirA', "`"$SmokeTestDirA`"", '-SmokeTestDirB', "`"$SmokeTestDirB`"", '-SmokeTestOutDir', "`"$SmokeTestOutDir`"")
+    }
+    $proc = Start-Process -FilePath $psExe -ArgumentList $relaunchArgs -PassThru -Wait
     exit $proc.ExitCode
 }
 
@@ -290,6 +303,7 @@ $btnStart.Add_Click({
             -LogAction $logAction -ProgressCallback $progressCallback -ShouldCancel $shouldCancel
 
         $script:LastOutDir = $result.OutDir
+        $script:LastResult = $result
         if ($result.PairsFound -eq 0) {
             $lblStatus.Text = "Nessun file corrispondente trovato."
         } elseif ($result.Cancelled) {
@@ -299,20 +313,50 @@ $btnStart.Add_Click({
             $progressBar.Value = 100
             $lblStatus.Text = "Completato: $($result.PairsFound) coppie analizzate."
             $btnOpenReport.Enabled = $true
-            [System.Windows.Forms.MessageBox]::Show(
-                "Confronto completato.`n$($result.PairsFound) coppie analizzate.`n`nReport: $($result.ReportMd)",
-                "Fatto", "OK", "Information") | Out-Null
+            if (-not $SmokeTest) {
+                [System.Windows.Forms.MessageBox]::Show(
+                    "Confronto completato.`n$($result.PairsFound) coppie analizzate.`n`nReport: $($result.ReportMd)",
+                    "Fatto", "OK", "Information") | Out-Null
+            }
         }
     }
     catch {
         $lblStatus.Text = "Errore."
+        $script:LastError = $_.Exception.Message
         Append-Log "ERRORE: $($_.Exception.Message)"
-        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "Errore", "OK", "Error") | Out-Null
+        if (-not $SmokeTest) {
+            [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "Errore", "OK", "Error") | Out-Null
+        }
     }
     finally {
         Set-RunningState $false
     }
 })
+
+if ($SmokeTest) {
+    # test automatico non interattivo (CI): compila i campi, simula il click
+    # sul pulsante reale (stesso percorso di codice dell'uso normale) e chiude
+    # la finestra da sola, senza bisogno di un utente davanti allo schermo
+    $form.Add_Shown({
+        $txtDirA.Text = $SmokeTestDirA
+        $txtDirB.Text = $SmokeTestDirB
+        $txtOutDir.Text = $SmokeTestOutDir
+        $btnStart.PerformClick()
+        $form.Close()
+    })
+    [void]$form.ShowDialog()
+
+    if ($script:LastError) {
+        Write-Host "SMOKE TEST FALLITO: $($script:LastError)"
+        exit 1
+    }
+    if (-not $script:LastResult -or $script:LastResult.PairsFound -eq 0) {
+        Write-Host "SMOKE TEST FALLITO: nessuna coppia trovata/elaborata."
+        exit 1
+    }
+    Write-Host "SMOKE TEST OK: $($script:LastResult.PairsFound) coppie, report in $($script:LastResult.ReportMd)"
+    exit 0
+}
 
 $form.Add_Shown({ $form.Activate() })
 [void]$form.ShowDialog()
